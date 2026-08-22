@@ -59,13 +59,13 @@ async def home(request: Request, error: str = None, creds_cookie: str = Cookie(N
         row_num = idx + 2
         name = row.get("Customer_Name", "Customer")
         phone = str(row.get("Phone_Number", ""))
-        status = row.get("Status", "Pending")
+        status = row.get("Review_Sent_Status", "Pending")
         
         clean_phone = phone.strip().replace("+", "").replace(" ", "").replace("-", "")
         msg = f"🪡 *[ SAINA LADIES TAILOR ]* 🪡\n\nHi {name}! We have exciting new festive designs in store. Drop by or message us early!"
         wa_link = f"https://wa.me/{clean_phone}?text={urllib.parse.quote(msg)}"
         
-        status_badge = "🟢 Sent" if status == "Sent" else "🟡 Pending"
+        status_badge = "🟢 Sent" if str(status).strip().lower() == "sent" else "🟡 Pending"
         
         rows_html += f"""
         <tr style="border-bottom: 1px solid #ddd;">
@@ -130,7 +130,7 @@ async def mark_sent(row_num: int = Form(...), creds_cookie: str = Cookie(None)):
         try:
             sh_bulk = gc.open("Saina_Bulk_Campaigns").sheet1
             headers = sh_bulk.row_values(1)
-            status_col_idx = headers.index("Status") + 1
+            status_col_idx = headers.index("Review_Sent_Status") + 1
             sh_bulk.update_cell(row_num, status_col_idx, "Sent")
         except Exception:
             pass

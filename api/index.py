@@ -55,6 +55,9 @@ async def home(request: Request, error: str = None, creds_cookie: str = Cookie(N
         return f"<h3>Error loading sheet data: {e}</h3><br><a href='/logout'>Reset Connection</a>"
 
     rows_html = ""
+    pending_count = 0
+    batch_links = []
+
     for idx, row in enumerate(records):
         row_num = idx + 2
         name = row.get("Customer_Name", "Customer")
@@ -63,7 +66,6 @@ async def home(request: Request, error: str = None, creds_cookie: str = Cookie(N
         
         clean_phone = phone.strip().replace("+", "").replace(" ", "").replace("-", "")
         
-        # Your custom review request message template
         msg = f"""🪡 *[ SAINA LADIES TAILOR ]* 🪡
 ----------------------------------------
 Hi {name} ! Thank you for choosing us. We hope you love your outfit.
@@ -73,8 +75,13 @@ If you are happy with the fit, it would mean the world to us if you could leave 
 https://search.google.com/local/writereview?placeid=ChIJr77_qNnHwjsRFJVQopbQElU"""
 
         wa_link = f"https://wa.me/{clean_phone}?text={urllib.parse.quote(msg)}"
+        is_sent = str(status).strip().lower() == "sent"
         
-        status_badge = "🟢 Sent" if str(status).strip().lower() == "sent" else "🟡 Pending"
+        if not is_sent and pending_count < 10:
+            batch_links.append({"name": name, "link": wa_link, "row_num": row_num})
+            pending_count += 1
+
+        status_badge = "🟢 Sent" if is_sent else "🟡 Pending"
         
         rows_html += f"""
         <tr style="border-bottom: 1px solid #ddd;">
@@ -91,16 +98,47 @@ https://search.google.com/local/writereview?placeid=ChIJr77_qNnHwjsRFJVQopbQElU"
         </tr>
         """
 
+    # Build JavaScript to open batch tabs safely with user approval popup
+    batch_script = ""
+    if batch_links:
+        links_json = json.dumps(batch_links)
+        batch_script = f"""
+        <script>
+            function startBatch() {{
+                const batchData = {links_json};
+                if (confirm("This will open WhatsApp tabs for the next " + batchData.length + " pending customers in sequence. Proceed?")) {{
+                    batchData.forEach((item, index) => {{
+                        setTimeout(() => {{
+                            window.open(item.link, '_blank');
+                        }}, index * 1500); // 1.5 second delay per tab to keep browser safe
+                    }});
+                }}
+            }}
+        </script>
+        """
+
+    batch_button_html = f"""
+    <div style="margin-bottom:20px; background:#eef9f1; padding:15px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+            <h4 style="margin:0; color:#2e7d32;">⚡ Batch Quick-Sender</h4>
+            <p style="margin:5px 0 0 0; font-size:13px; color:#555;">Ready to send batch: <b>{pending_count}</b> pending customer(s) queued (up to 10).</p>
+        </div>
+        <button onclick="startBatch()" style="background:#25D366; color:white; border:none; padding:10px 18px; border-radius:5px; font-weight:bold; cursor:pointer; font-size:14px;">🚀 Open Batch of 10</button>
+    </div>
+    {batch_script}
+    """ if pending_count > 0 else ""
+
     return f"""
     <html>
     <head><title>Saina Bulk Campaign Hub</title></head>
     <body style="font-family:sans-serif; background:#f4f7f6; padding:30px;">
-        <div style="max-width:800px; margin:0 auto; background:white; padding:30px; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+        <div style="max-width:850px; margin:0 auto; background:white; padding:30px; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                 <h2 style="margin:0; color:#333;">📢 Saina Bulk Campaign Hub</h2>
                 <a href="/logout" style="color:#d9534f; text-decoration:none; font-size:14px; font-weight:bold;">Disconnect</a>
             </div>
             {err_html}
+            {batch_button_html}
             <table style="width:100%; border-collapse:collapse; text-align:left;">
                 <thead>
                     <tr style="background:#f8f9fa; border-bottom:2px solid #ddd;">

@@ -1,20 +1,37 @@
-from fastapi import FastAPI, Request, Form, UploadFile, File
+from fastapi import FastAPI, Request, Form, UploadFile, File, Cookie
 from fastapi.responses import HTMLResponse, RedirectResponse
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 import json
 import urllib.parse
+import base64
 
 app = FastAPI()
 
-active_gc = None
+def get_gc_from_cookie(creds_cookie: str):
+    if not creds_cookie:
+        return None
+    try:
+        decoded_bytes = base64.b64decode(creds_cookie.encode('utf-8'))
+        creds_data = json.loads(decoded_bytes.decode('utf-8'))
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        creds = Credentials.from_service_account_info(creds_data, scopes=scopes)
+        return gspread.authorize(creds)
+    except Exception:
+        return None
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request, error: str = None):
+async def home(request: Request, error: str = None, creds_cookie: str = Cookie(None)):
     err_html = f"<div style='color:red; background:#ffe6e6; padding:10px; border-radius:5px; margin-bottom:15px;'>{error}</div>" if error else ""
     
-    if not active_gc:
+    gc = get_gc_from_cookie(creds_cookie)
+    
+    # If not connected yet, show file uploader
+    if not gc:
         return f"""
         <html>
         <head><title>Saina Tailor Hub - Login</title></head>
@@ -33,7 +50,7 @@ async def home(request: Request, error: str = None):
         """
     
     try:
-        sh_bulk = active_gc.open("Saina_Bulk_Campaigns").sheet1
+        sh_bulk = gc.open("Saina_Bulk_Campaigns").sheet1
         records = sh_bulk.get_all_records()
     except Exception as e:
         return f"<h3>Error loading sheet data: {e}</h3><br><a href='/logout'>Reset Connection</a>"
@@ -96,26 +113,24 @@ async def home(request: Request, error: str = None):
 
 @app.post("/connect")
 async def connect_sheets(file: UploadFile = File(...)):
-    global active_gc
     try:
         content = await file.read()
-        creds_data = json.loads(content)
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        creds = Credentials.from_service_account_info(creds_data, scopes=scopes)
-        active_gc = gspread.authorize(creds)
-        return RedirectResponse(url="/", status_code=303)
+        # Verify it's valid JSON before encoding
+        json.loads(content)
+        encoded_cookie = base64.b64encode(content).decode('utf-8')
+        
+        response = RedirectResponse(url="/", status_code=303)
+        response.set_cookie(key="creds_cookie", value=encoded_cookie, httponly=True, max_age=86400)
+        return response
     except Exception as e:
-        return RedirectResponse(url=f"/?error=Connection failed: {str(e)}", status_code=303)
+        return RedirectResponse(url=f"/?error=Invalid JSON file: {str(e)}", status_code=303)
 
 @app.post("/mark-sent")
-async def mark_sent(row_num: int = Form(...)):
-    global active_gc
-    if active_gc:
+async def mark_sent(row_num: int = Form(...), creds_cookie: str = Cookie(None)):
+    gc = get_gc_from_cookie(creds_cookie)
+    if gc:
         try:
-            sh_bulk = active_gc.open("Saina_Bulk_Campaigns").sheet1
+            sh_bulk = gc.open("Saina_Bulk_Campaigns").sheet1
             headers = sh_bulk.row_values(1)
             status_col_idx = headers.index("Status") + 1
             sh_bulk.update_cell(row_num, status_col_idx, "Sent")
@@ -125,6 +140,6 @@ async def mark_sent(row_num: int = Form(...)):
 
 @app.get("/logout")
 async def logout():
-    global active_gc
-    active_gc = None
-    return RedirectResponse(url="/", status_code=303)
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie(key="creds_cookie")
+    return response

@@ -62,7 +62,16 @@ async def home(request: Request, error: str = None, creds_cookie: str = Cookie(N
         status = row.get("Review_Sent_Status", "Pending")
         
         clean_phone = phone.strip().replace("+", "").replace(" ", "").replace("-", "")
-        msg = f"🪡 *[ SAINA LADIES TAILOR ]* 🪡\n\nHi {name}! We have exciting new festive designs in store. Drop by or message us early!"
+        
+        # Your custom review request message template
+        msg = f"""🪡 *[ SAINA LADIES TAILOR ]* 🪡
+----------------------------------------
+Hi {name} ! Thank you for choosing us. We hope you love your outfit.
+
+If you are happy with the fit, it would mean the world to us if you could leave a quick review here:
+
+https://search.google.com/local/writereview?placeid=ChIJr77_qNnHwjsRFJVQopbQElU"""
+
         wa_link = f"https://wa.me/{clean_phone}?text={urllib.parse.quote(msg)}"
         
         status_badge = "🟢 Sent" if str(status).strip().lower() == "sent" else "🟡 Pending"

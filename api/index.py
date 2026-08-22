@@ -30,7 +30,6 @@ async def home(request: Request, error: str = None, creds_cookie: str = Cookie(N
     
     gc = get_gc_from_cookie(creds_cookie)
     
-    # If not connected yet, show file uploader
     if not gc:
         return f"""
         <html>
@@ -115,7 +114,6 @@ async def home(request: Request, error: str = None, creds_cookie: str = Cookie(N
 async def connect_sheets(file: UploadFile = File(...)):
     try:
         content = await file.read()
-        # Verify it's valid JSON before encoding
         json.loads(content)
         encoded_cookie = base64.b64encode(content).decode('utf-8')
         
